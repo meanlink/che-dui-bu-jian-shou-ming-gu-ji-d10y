@@ -33,6 +33,27 @@ def seed_records():
     return rows
 
 
+def seed_retention_records(model_name, threshold_km, size=30):
+    """生成独立留样批次：资产号带 RT 前缀，与拟合样本不重叠。
+
+    确定性构造，覆盖全部核验判定：26 件在役超里程达标、1 件到里程后失效达标、
+    2 件提前失效未达标、1 件提前停跟待定；下界恰为 27/30=0.90。
+    """
+    rows = []
+    for index in range(size):
+        asset = f"RT-{model_name}-{index + 1:03}"
+        if index < 26:
+            km, failed = round(threshold_km * (1.05 + 0.012 * index), 1), 0
+        elif index == 26:
+            km, failed = round(threshold_km * 1.08, 1), 1
+        elif index in (27, 28):
+            km, failed = round(threshold_km * (0.4 + 0.05 * (index - 27)), 1), 1
+        else:
+            km, failed = round(threshold_km * 0.35, 1), 0
+        rows.append({"asset": asset, "model": model_name, "km": min(km, 9_900_000), "failed": failed})
+    return rows
+
+
 def analyze(records, params):
     if not isinstance(records, list) or not records:
         raise ValueError("请先提供含失效标记的部件寿命样本")

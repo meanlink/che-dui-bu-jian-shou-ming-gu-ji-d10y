@@ -2,9 +2,10 @@ import time, json
 from sqlalchemy import select, func
 from src.config.database import Session
 from migrations.initial import migrate
-from src.models import User, Dataset, Job, Report, Delivery, Audit
-from src.services.business import metadata, seed_records, analyze
+from src.models import User, Dataset, Job, Report, Delivery, Audit, Backtest
+from src.services.business import metadata, seed_records, seed_retention_records, analyze
 from src.services.reports import deliver
+from src.services.verification import evaluate_retention
 from src.utils.security import hash_password
 from src.utils.serialization import checksum
 def seed():
@@ -30,9 +31,17 @@ def seed():
             db.add(j);db.flush()
             r=Report(name='每日业务复核简报',job_id=j.id,destination='业务复核组 · 本地收件箱',interval_seconds=86400,next_run=time.time()+86400,enabled=True)
             db.add(r);db.flush();deliver(db,r)
+            threshold=next(m['value'] for m in result['metrics'] if m['label']=='目标可靠度里程')
+            retention=seed_retention_records(params['model'],threshold)
+            bt_result=evaluate_retention(retention,params['model'],threshold,params['reliability'])
+            bt_result['job_id']=j.id;bt_result['batch_no']='RT-基线-202611';bt_result['sample_checksum']=checksum(retention);bt_result['attempts']=1
+            db.add(Backtest(job_id=j.id,name='基线留样核验 · RT-基线-202611',batch_no='RT-基线-202611',
+                            sample_checksum=checksum(retention),records=retention,status='completed',
+                            attempts=1,result=bt_result,approved=bt_result['target_met'],
+                            created_by=admin.id,created_at=time.time()-1800,finished_at=time.time()-1790))
             db.add(Audit(actor='seed',action='demo.baseline',detail={'dataset':d.id},at=time.time()))
         db.commit()
-        counts={model.__tablename__:db.scalar(select(func.count()).select_from(model)) for model in [User,Dataset,Job,Report,Delivery,Audit]}
+        counts={model.__tablename__:db.scalar(select(func.count()).select_from(model)) for model in [User,Dataset,Job,Backtest,Report,Delivery,Audit]}
         print(json.dumps(counts,ensure_ascii=False))
         return counts
 if __name__=='__main__':seed()

@@ -8,3 +8,8 @@ class JobStatus(str, Enum):
     running = 'running'
     completed = 'completed'
     failed = 'failed'
+class BacktestStatus(str, Enum):
+    queued = 'queued'
+    running = 'running'
+    completed = 'completed'
+    failed = 'failed'
